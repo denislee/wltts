@@ -1,0 +1,4 @@
+Name: webkit2gtk-4.0
+Description: Shim that redirects to webkit2gtk-4.1 (ABI-compatible).
+Version: 2.0
+Requires: webkit2gtk-4.1

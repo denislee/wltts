@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WLTTS</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">WLTTS</div>
+    <input id="url" type="text" placeholder="https://example.com/article" autocomplete="off" />
+    <button id="load" class="primary">Load</button>
+    <select id="voice" title="Voice"></select>
+    <label class="rate">
+      <span>Speed</span>
+      <input id="rate" type="range" min="-50" max="80" step="5" value="0" />
+      <output id="rateOut">0%</output>
+    </label>
+    <button id="prepare">⏳ Prepare</button>
+    <button id="play" disabled>▶ Play</button>
+    <button id="pause" disabled>❚❚ Pause</button>
+    <button id="stop" disabled>■ Stop</button>
+    <button id="prep" title="Edit / preprocess text">⚙ Prep</button>
+  </header>
+
+  <div id="progress" class="progress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" title="Click to seek">
+    <div id="progressFill" class="progress-fill"></div>
+    <div id="progressTime" class="progress-time">0:00 / 0:00</div>
+  </div>
+
+  <main>
+    <article id="article" class="empty">
+      <p class="hint">Paste a URL above and click <b>Load</b> to start reading aloud.</p>
+    </article>
+
+    <aside id="sidepanel" hidden>
+      <h3>Preprocess</h3>
+      <p class="muted">Cleanup options applied before TTS.</p>
+      <label><input type="checkbox" id="opt_normalize_whitespace" checked /> Normalize whitespace</label>
+      <label><input type="checkbox" id="opt_strip_urls" checked /> Strip URLs</label>
+      <label><input type="checkbox" id="opt_strip_citations" checked /> Strip citations like [1], [edit]</label>
+      <label><input type="checkbox" id="opt_strip_emoji" /> Strip emoji</label>
+      <label><input type="checkbox" id="opt_expand_abbreviations" checked /> Expand common abbreviations</label>
+
+      <h4>Custom replacements</h4>
+      <p class="muted">One per line, format <code>find=&gt;replace</code></p>
+      <textarea id="replacements" rows="5" placeholder="e.g. =&gt; for example"></textarea>
+
+      <h4>Edit text</h4>
+      <p class="muted">Direct edits override extracted text.</p>
+      <textarea id="editText" rows="14"></textarea>
+
+      <div class="row">
+        <button id="applyPrep" class="primary">Apply</button>
+        <button id="closePrep">Close</button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="status" class="status"></div>
+  <audio id="player" preload="auto"></audio>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
