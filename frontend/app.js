@@ -19,6 +19,10 @@ const els = {
   closePrep: $("#closePrep"),
   editText: $("#editText"),
   replacements: $("#replacements"),
+  fontFace: $("#opt_font_face"),
+  fontSize: $("#opt_font_size"),
+  theme: $("#opt_theme"),
+  topbar: $(".topbar"),
   player: $("#player"),
   status: $("#status"),
   progress: $("#progress"),
@@ -103,6 +107,30 @@ function applySavedConfig() {
     if (typeof prep[k] === "boolean") $(sel).checked = prep[k];
   }
   if (typeof prep.replacements === "string") els.replacements.value = prep.replacements;
+
+  if (cfg.fontFace) els.fontFace.value = cfg.fontFace;
+  if (cfg.fontSize) els.fontSize.value = String(cfg.fontSize);
+  if (cfg.theme) els.theme.value = cfg.theme;
+  applyReaderSettings();
+}
+
+function applyReaderSettings() {
+  const face = els.fontFace.value;
+  const size = els.fontSize.value;
+  const theme = els.theme.value;
+  const root = document.documentElement;
+
+  // Apply font face
+  let family = "var(--font-sans)";
+  if (face === "serif") family = "var(--font-serif)";
+  if (face === "charter") family = "var(--font-charter)";
+  if (face === "palatino") family = "var(--font-palatino)";
+  if (face === "monospace") family = "var(--font-mono)";
+  root.style.setProperty("--article-font-family", family);
+  root.style.setProperty("--article-font-size", size + "px");
+
+  // Apply theme class to body
+  document.body.className = "theme-" + theme;
 }
 
 // ---- API helpers ---------------------------------------------------------
@@ -131,6 +159,10 @@ function status(msg, kind = "") {
     clearTimeout(status._t);
     status._t = setTimeout(() => (els.status.className = "status"), 4000);
   }
+}
+
+function setTopBarVisible(visible) {
+  els.topbar.classList.toggle("hidden", !visible);
 }
 
 // ---- Voice list ----------------------------------------------------------
@@ -177,7 +209,11 @@ async function loadArticle() {
     els.editText.value = state.rawText;
     renderArticle(article, state.rawText);
     status("Loaded. Preparing audio…");
-    prepare();
+    els.article.focus({ preventScroll: true });
+    await prepare();
+    if (state.ready) {
+      try { await els.player.play(); } catch {}
+    }
   } catch (e) {
     els.article.innerHTML = `<p class="hint">Failed: ${escapeHTML(String(e.message || e))}</p>`;
     status("Load failed: " + (e.message || e), "error");
@@ -616,12 +652,27 @@ els.voice.addEventListener("change", () => {
 ].forEach((sel) => $(sel).addEventListener("change", () => saveConfig({ prep: snapshotPrepOpts() })));
 els.replacements.addEventListener("input", () => saveConfig({ prep: snapshotPrepOpts() }));
 
-// Ctrl+L: focus and select the address bar (browser-style).
-// Vim-style article navigation: j/k scroll, Ctrl-F/Ctrl-B page, gg/G top/bottom.
+els.fontFace.addEventListener("change", () => {
+  applyReaderSettings();
+  saveConfig({ fontFace: els.fontFace.value });
+});
+els.fontSize.addEventListener("input", () => {
+  applyReaderSettings();
+  saveConfig({ fontSize: parseInt(els.fontSize.value, 10) });
+});
+els.theme.addEventListener("change", () => {
+  applyReaderSettings();
+  saveConfig({ theme: els.theme.value });
+});
+
+  // Ctrl+L: focus and select the address bar (browser-style).
+  // Vim-style article navigation: j/k scroll, Ctrl-F/Ctrl-B page, gg/G top/bottom.
+
 let lastG = 0;
 window.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "l") {
     e.preventDefault();
+    setTopBarVisible(true);
     els.url.focus();
     els.url.select();
     return;
@@ -645,6 +696,17 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === " ") {
+    e.preventDefault();
+    if (els.player.paused) play(); else pause();
+    return;
+  }
+  if (e.key === "q") {
+    e.preventDefault();
+    if (typeof window.wlttsQuit === "function") window.wlttsQuit();
+    else window.close();
+    return;
+  }
   if (e.key === "j") {
     e.preventDefault();
     a.scrollBy({ top: step, behavior: "smooth" });
@@ -680,8 +742,19 @@ els.applyPrep.addEventListener("click", applyPrep);
 
 els.player.addEventListener("timeupdate", onTimeUpdate);
 els.player.addEventListener("seeked", () => { setActiveBoundary(-1); onTimeUpdate(); });
-els.player.addEventListener("ended", () => { els.pause.disabled = true; els.stop.disabled = true; });
-els.player.addEventListener("playing", () => { els.pause.disabled = false; els.stop.disabled = false; });
+els.player.addEventListener("ended", () => {
+  els.pause.disabled = true;
+  els.stop.disabled = true;
+  setTopBarVisible(true);
+});
+els.player.addEventListener("playing", () => {
+  els.pause.disabled = false;
+  els.stop.disabled = false;
+  setTopBarVisible(false);
+});
+els.player.addEventListener("pause", () => {
+  setTopBarVisible(true);
+});
 els.player.addEventListener("loadedmetadata", updateProgress);
 els.player.addEventListener("durationchange", updateProgress);
 els.player.addEventListener("emptied", updateProgress);

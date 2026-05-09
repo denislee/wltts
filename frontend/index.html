@@ -9,20 +9,31 @@
 <body>
 <div id="app">
   <header class="topbar">
-    <div class="brand">WLTTS</div>
-    <input id="url" type="text" placeholder="https://example.com/article" autocomplete="off" />
-    <button id="load" class="primary">Load</button>
-    <select id="voice" title="Voice"></select>
-    <label class="rate">
-      <span>Speed</span>
-      <input id="rate" type="range" min="-50" max="80" step="5" value="0" />
-      <output id="rateOut">0%</output>
-    </label>
-    <button id="prepare">⏳ Prepare</button>
-    <button id="play" disabled>▶ Play</button>
-    <button id="pause" disabled>❚❚ Pause</button>
-    <button id="stop" disabled>■ Stop</button>
-    <button id="prep" title="Edit / preprocess text">⚙ Prep</button>
+    <div class="row main-row">
+      <div class="brand">WLTTS</div>
+      <input id="url" type="text" placeholder="https://example.com/article" autocomplete="off" />
+      <button id="load" class="icon-btn primary" title="Load Article">➜</button>
+      <button id="prep" class="icon-btn" title="Settings / Prep">⚙</button>
+    </div>
+    
+    <div class="row controls-row">
+      <div class="group transport">
+        <button id="play" disabled title="Play (Space)">▶</button>
+        <button id="pause" disabled title="Pause">❚❚</button>
+        <button id="stop" disabled title="Stop">■</button>
+        <button id="prepare" class="prep-btn">Prepare</button>
+      </div>
+      
+      <div class="spacer"></div>
+      
+      <div class="group settings">
+        <select id="voice" title="Voice"></select>
+        <label class="rate">
+          <input id="rate" type="range" min="-50" max="80" step="5" value="0" />
+          <output id="rateOut">0%</output>
+        </label>
+      </div>
+    </div>
   </header>
 
   <div id="progress" class="progress" role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" title="Click to seek">
@@ -31,7 +42,7 @@
   </div>
 
   <main>
-    <article id="article" class="empty">
+    <article id="article" class="empty" tabindex="-1">
       <p class="hint">Paste a URL above and click <b>Load</b> to start reading aloud.</p>
     </article>
 
@@ -43,6 +54,40 @@
       <label><input type="checkbox" id="opt_strip_citations" checked /> Strip citations like [1], [edit]</label>
       <label><input type="checkbox" id="opt_strip_emoji" /> Strip emoji</label>
       <label><input type="checkbox" id="opt_expand_abbreviations" checked /> Expand common abbreviations</label>
+
+      <h4>Reader</h4>
+      <div class="row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+        <label>
+          Theme
+          <select id="opt_theme" style="width: 100%; margin-top: 4px;">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="sepia">Sepia</option>
+            <option value="oled">OLED Black</option>
+            <option value="solarized-dark">Solarized Dark</option>
+            <option value="solarized-light">Solarized Light</option>
+            <option value="nord">Nord</option>
+            <option value="everforest">Everforest</option>
+            <option value="dracula">Dracula</option>
+          </select>
+        </label>
+        <div class="row" style="align-items: center; gap: 12px; margin-top: 0;">
+          <label style="flex: 1;">
+            Face
+            <select id="opt_font_face" style="width: 100%; margin-top: 4px;">
+              <option value="sans-serif">System Sans</option>
+              <option value="serif">System Serif</option>
+              <option value="charter">Charter</option>
+              <option value="palatino">Palatino</option>
+              <option value="monospace">Monospace</option>
+            </select>
+          </label>
+          <label style="width: 80px;">
+            Size
+            <input type="number" id="opt_font_size" min="12" max="48" value="19" style="width: 100%; margin-top: 4px;" />
+          </label>
+        </div>
+      </div>
 
       <h4>Custom replacements</h4>
       <p class="muted">One per line, format <code>find=&gt;replace</code></p>

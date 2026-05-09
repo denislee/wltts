@@ -27,6 +27,7 @@ func main() {
 	defer w.Destroy()
 	w.SetTitle("WLTTS — Web Reader TTS")
 	w.SetSize(1180, 800, webview.HintNone)
+	w.Bind("wlttsQuit", func() { w.Terminate() })
 	w.Navigate(addr)
 	w.Run()
 }
