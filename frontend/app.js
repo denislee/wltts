@@ -286,11 +286,12 @@ function renderArticle(article, text) {
 // Split text into word/non-word tokens with char offsets. Returns objects
 // with {kind:"word"|"skip", text, start, end} where [start, end) are
 // indices into the input string.
+const tokenRe = /(\p{L}[\p{L}\p{M}'’]*|\d[\d.,]*)|(\s+|[^\p{L}\p{M}\d\s]+)/gu;
 function tokenizeWithOffsets(text) {
-  const re = /(\p{L}[\p{L}\p{M}'’]*|\d[\d.,]*)|(\s+|[^\p{L}\p{M}\d\s]+)/gu;
+  tokenRe.lastIndex = 0;
   const out = [];
   let m;
-  while ((m = re.exec(text))) {
+  while ((m = tokenRe.exec(text))) {
     out.push({
       kind: m[1] ? "word" : "skip",
       text: m[1] || m[2],
@@ -705,6 +706,12 @@ window.addEventListener("keydown", (e) => {
     e.preventDefault();
     if (typeof window.wlttsQuit === "function") window.wlttsQuit();
     else window.close();
+    return;
+  }
+  if (e.key === ",") {
+    e.preventDefault();
+    if (els.side.hidden) els.editText.value = state.spokenText || state.rawText;
+    els.side.hidden = !els.side.hidden;
     return;
   }
   if (e.key === "j") {

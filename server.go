@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"wltts/reader"
 	"wltts/tts"
@@ -43,7 +45,20 @@ type preprocessResp struct {
 // a separate /audio endpoint instead of embedding a megabytes-large base64
 // blob in the JSON response — the <audio> element streams it natively.
 type audioCache struct {
+	mu  sync.RWMutex
 	mp3 []byte
+}
+
+func (c *audioCache) set(b []byte) {
+	c.mu.Lock()
+	c.mp3 = b
+	c.mu.Unlock()
+}
+
+func (c *audioCache) get() []byte {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.mp3
 }
 
 func newServer() (*http.Server, string, error) {
@@ -56,11 +71,20 @@ func newServer() (*http.Server, string, error) {
 	}
 	mux.Handle("/", http.FileServer(http.FS(sub)))
 
+	voicesJSON, err := json.Marshal(tts.Voices)
+	if err != nil {
+		return nil, "", err
+	}
 	mux.HandleFunc("/api/voices", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, tts.Voices)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(voicesJSON)
 	})
 
 	mux.HandleFunc("/api/fetch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		var body struct{ URL string `json:"url"` }
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -75,6 +99,10 @@ func newServer() (*http.Server, string, error) {
 	})
 
 	mux.HandleFunc("/api/preprocess", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		var body preprocessReq
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -89,6 +117,10 @@ func newServer() (*http.Server, string, error) {
 	//   {"type":"error","message":"..."}
 	// Closing the request connection cancels the in-flight synthesis.
 	mux.HandleFunc("/api/synthesize", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		var body synthReq
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -124,7 +156,7 @@ func newServer() (*http.Server, string, error) {
 			emit(map[string]any{"type": "error", "message": err.Error()})
 			return
 		}
-		cache.mp3 = res.AudioMP3
+		cache.set(res.AudioMP3)
 		var dur int64
 		if n := len(res.Words); n > 0 {
 			last := res.Words[n-1]
@@ -162,14 +194,15 @@ func newServer() (*http.Server, string, error) {
 	})
 
 	mux.HandleFunc("/audio.mp3", func(w http.ResponseWriter, r *http.Request) {
-		if len(cache.mp3) == 0 {
+		mp3 := cache.get()
+		if len(mp3) == 0 {
 			http.Error(w, "no audio", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "audio/mpeg")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Accept-Ranges", "bytes")
-		http.ServeContent(w, r, "audio.mp3", zeroTime, byteSeeker(cache.mp3))
+		http.ServeContent(w, r, "audio.mp3", time.Time{}, bytes.NewReader(mp3))
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

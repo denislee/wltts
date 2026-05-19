@@ -4,15 +4,19 @@
 package reader
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	readability "github.com/go-shiori/go-readability"
 )
+
+var multiNewline = regexp.MustCompile(`\n{3,}`)
 
 type Article struct {
 	URL      string `json:"url"`
@@ -27,6 +31,11 @@ const browserUA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, li
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
+func isMediumHost(host string) bool {
+	host = strings.ToLower(host)
+	return host == "medium.com" || strings.HasSuffix(host, ".medium.com")
+}
+
 func Fetch(rawURL string) (*Article, error) {
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		rawURL = "https://" + rawURL
@@ -34,6 +43,13 @@ func Fetch(rawURL string) (*Article, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid url: %w", err)
+	}
+	if isMediumHost(u.Host) {
+		rawURL = "https://freedium-mirror.cfd/" + u.String()
+		u, err = url.Parse(rawURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid url: %w", err)
+		}
 	}
 
 	// Many sites (Wikipedia, news sites) reject Go's default User-Agent or
@@ -60,14 +76,11 @@ func Fetch(rawURL string) (*Article, error) {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
 
-	art, err := readability.FromReader(strings.NewReader(string(body)), u)
+	art, err := readability.FromReader(bytes.NewReader(body), u)
 	if err != nil {
 		return nil, fmt.Errorf("readability: %w", err)
 	}
-	text := strings.TrimSpace(art.TextContent)
-	for strings.Contains(text, "\n\n\n") {
-		text = strings.ReplaceAll(text, "\n\n\n", "\n\n")
-	}
+	text := multiNewline.ReplaceAllString(strings.TrimSpace(art.TextContent), "\n\n")
 	return &Article{
 		URL:      u.String(),
 		Title:    art.Title,

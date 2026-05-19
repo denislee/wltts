@@ -6,6 +6,7 @@
 package tts
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,9 +16,16 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+)
+
+var (
+	pathAudioMeta = []byte("Path:audio.metadata")
+	pathTurnEnd   = []byte("Path:turn.end")
+	headerSep     = []byte("\r\n\r\n")
 )
 
 const (
@@ -38,7 +46,7 @@ const (
 func generateSecMSGEC() string {
 	ticks := (time.Now().Unix() + winEpochSecs) * 10_000_000
 	ticks -= ticks % 3_000_000_000
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%d%s", ticks, trustedToken)))
+	sum := sha256.Sum256(fmt.Appendf(nil, "%d%s", ticks, trustedToken))
 	return strings.ToUpper(hex.EncodeToString(sum[:]))
 }
 
@@ -147,6 +155,7 @@ func Synthesize(ctx context.Context, text, voice, rate, pitch string) (*Result, 
 
 	conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	result := &Result{}
+	var audioBuf bytes.Buffer
 	for {
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
@@ -157,14 +166,13 @@ func Synthesize(ctx context.Context, text, voice, rate, pitch string) (*Result, 
 		}
 		switch msgType {
 		case websocket.TextMessage:
-			s := string(data)
-			if strings.Contains(s, "Path:audio.metadata") {
-				idx := strings.Index(s, "\r\n\r\n")
+			if bytes.Contains(data, pathAudioMeta) {
+				idx := bytes.Index(data, headerSep)
 				if idx == -1 {
 					continue
 				}
 				var meta rawMetadata
-				if err := json.Unmarshal([]byte(s[idx+4:]), &meta); err != nil {
+				if err := json.Unmarshal(data[idx+4:], &meta); err != nil {
 					continue
 				}
 				for _, m := range meta.Metadata {
@@ -177,7 +185,8 @@ func Synthesize(ctx context.Context, text, voice, rate, pitch string) (*Result, 
 						Text:       m.Data.Text.Text,
 					})
 				}
-			} else if strings.Contains(s, "Path:turn.end") {
+			} else if bytes.Contains(data, pathTurnEnd) {
+				result.AudioMP3 = audioBuf.Bytes()
 				return result, nil
 			}
 		case websocket.BinaryMessage:
@@ -188,7 +197,7 @@ func Synthesize(ctx context.Context, text, voice, rate, pitch string) (*Result, 
 			if 2+hdrLen > len(data) {
 				continue
 			}
-			result.AudioMP3 = append(result.AudioMP3, data[2+hdrLen:]...)
+			audioBuf.Write(data[2+hdrLen:])
 		}
 	}
 }
@@ -202,23 +211,21 @@ func Synthesize(ctx context.Context, text, voice, rate, pitch string) (*Result, 
 // is synthesized and once more when all chunks complete. Cancellation via
 // ctx is honored between and during chunks.
 func SynthesizeLong(ctx context.Context, text, voice, rate, pitch string, progress func(done, total int)) (*Result, error) {
-	chunks := chunkText(text, 2800)
-	final := &Result{}
-	var offsetMs int64
-	total := 0
-	for _, c := range chunks {
+	raw := chunkText(text, 2800)
+	chunks := raw[:0]
+	for _, c := range raw {
 		if strings.TrimSpace(c) != "" {
-			total++
+			chunks = append(chunks, c)
 		}
 	}
-	done := 0
+	final := &Result{}
+	var audioBuf bytes.Buffer
+	var offsetMs int64
+	total := len(chunks)
 	if progress != nil {
-		progress(done, total)
+		progress(0, total)
 	}
-	for _, chunk := range chunks {
-		if strings.TrimSpace(chunk) == "" {
-			continue
-		}
+	for i, chunk := range chunks {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
@@ -237,12 +244,12 @@ func SynthesizeLong(ctx context.Context, text, voice, rate, pitch string, progre
 			last := r.Words[n-1]
 			offsetMs += last.OffsetMs + last.DurationMs + 250
 		}
-		final.AudioMP3 = append(final.AudioMP3, r.AudioMP3...)
-		done++
+		audioBuf.Write(r.AudioMP3)
 		if progress != nil {
-			progress(done, total)
+			progress(i+1, total)
 		}
 	}
+	final.AudioMP3 = audioBuf.Bytes()
 	return final, nil
 }
 
@@ -290,19 +297,22 @@ func chunkText(text string, maxLen int) []string {
 
 func splitSentences(p string) []string {
 	var out []string
-	var cur strings.Builder
-	runes := []rune(p)
-	for i, r := range runes {
-		cur.WriteRune(r)
-		if r == '.' || r == '!' || r == '?' || r == '。' {
-			if i+1 < len(runes) && (runes[i+1] == ' ' || runes[i+1] == '\n') {
-				out = append(out, strings.TrimSpace(cur.String()))
-				cur.Reset()
+	start := 0
+	for i, r := range p {
+		if r != '.' && r != '!' && r != '?' && r != '。' {
+			continue
+		}
+		next := i + utf8.RuneLen(r)
+		if next < len(p) && (p[next] == ' ' || p[next] == '\n') {
+			if s := strings.TrimSpace(p[start:next]); s != "" {
+				out = append(out, s)
 			}
+			start = next
 		}
 	}
-	if s := strings.TrimSpace(cur.String()); s != "" {
+	if s := strings.TrimSpace(p[start:]); s != "" {
 		out = append(out, s)
 	}
 	return out
 }
+

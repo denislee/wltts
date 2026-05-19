@@ -61,11 +61,26 @@ func Preprocess(text string, opts PreprocessOpts) string {
 	if opts.NormalizeWS {
 		text = multiWS.ReplaceAllString(text, " ")
 		text = multiNL.ReplaceAllString(text, "\n\n")
-		var lines []string
-		for _, l := range strings.Split(text, "\n") {
-			lines = append(lines, strings.TrimSpace(l))
+		var b strings.Builder
+		b.Grow(len(text))
+		first := true
+		for {
+			i := strings.IndexByte(text, '\n')
+			if i < 0 {
+				if !first {
+					b.WriteByte('\n')
+				}
+				b.WriteString(strings.TrimSpace(text))
+				break
+			}
+			if !first {
+				b.WriteByte('\n')
+			}
+			b.WriteString(strings.TrimSpace(text[:i]))
+			text = text[i+1:]
+			first = false
 		}
-		text = strings.Join(lines, "\n")
+		text = b.String()
 	}
 	return strings.TrimSpace(text)
 }
